@@ -7,12 +7,10 @@ import random
 from difflib import SequenceMatcher
 
 try:
-    from symspellpy import SymSpell, Verbosity
     import pkg_resources
 except ImportError:
     print("Installing required packages...")
-    os.system('pip install symspellpy')
-    from symspellpy import SymSpell, Verbosity
+    os.system('pip install pkg_resources')
     import pkg_resources
 
 try:
@@ -22,31 +20,6 @@ except ImportError:
     print("Installing SerpAPI...")
     os.system('pip install google-search-results')
     from serpapi import GoogleSearch
-
-# ==== SPELL CHECKER FUNCTIONS ====
-def init_spell_checker():
-    try:
-        sym_spell = SymSpell(max_dictionary_edit_distance=2, prefix_length=7)
-        dictionary_path = pkg_resources.resource_filename(
-            "symspellpy", "frequency_dictionary_en_82_765.txt")
-        if not os.path.exists(dictionary_path):
-            print("Dictionary not found. Make sure symspellpy is properly installed.")
-            return None
-        sym_spell.load_dictionary(dictionary_path, term_index=0, count_index=1)
-        return sym_spell
-    except Exception as e:
-        print(f"Error initializing spell checker: {e}")
-        return None
-
-def correct_query(sym_spell, query):
-    if sym_spell is None:
-        return query
-    try:
-        suggestions = sym_spell.lookup_compound(query, max_edit_distance=2)
-        return suggestions[0].term if suggestions else query
-    except Exception as e:
-        print(f"Error correcting query: {e}")
-        return query
 
 # ==== ARXIV SEARCH ====
 def search_arxiv(query, max_results=10):
@@ -148,12 +121,22 @@ def search_google_scholar_serpapi(query, serp_api_key, max_results=10):
                 for resource in resources:
                     link = resource.get("link", "")
                     if link and link.lower().endswith(".pdf"):
+                        # Skip IEEE papers by checking the URL
+                        if "ieeexplore.ieee.org" in link.lower():
+                            print(f"Skipping IEEE paper: {result.get('title', '')}")
+                            pdf_url = ""  # Skip this paper
+                            break
                         pdf_url = link
                         break
             
             # If no PDF found but there's a link, use it anyway
             if not pdf_url and result.get("link"):
                 pdf_url = result.get("link")
+            
+            # Skip IEEE papers
+            if "ieeexplore.ieee.org" in pdf_url.lower():
+                print(f"Skipping IEEE paper: {result.get('title', '')}")
+                continue
                 
             if pdf_url:
                 papers.append({
@@ -166,6 +149,7 @@ def search_google_scholar_serpapi(query, serp_api_key, max_results=10):
     except Exception as e:
         print(f"Error searching Google Scholar: {e}")
     return papers
+
 
 # ==== BASIC RANKING FUNCTION (No ML dependencies) ====
 def text_similarity(text1, text2):
@@ -226,7 +210,7 @@ def rank_papers(query, papers, top_k=10):
         return papers[:top_k]  # Fallback to first results
 
 # ==== PDF DOWNLOADER ====
-def download_pdfs(papers, folder='downloads'):
+def download_pdfs(papers, folder='downloads', target_successful_downloads=10):
     if not papers:
         print("No papers to download")
         return
@@ -235,31 +219,115 @@ def download_pdfs(papers, folder='downloads'):
         os.makedirs(folder)
     
     successful_downloads = 0
-    for i, paper in enumerate(papers, start=1):
+    total_attempts = 0
+    
+    # List of domains to skip (e.g., paywalls, login-required, etc.)
+    skip_domains = [
+        "ieeexplore.ieee.org",
+        "researchgate.net",
+        "link.springer.com",
+        "mdpi.com",
+        "nature.com",
+        "pmc.ncbi.nlm.nih.gov"
+    ]
+    
+    while successful_downloads < target_successful_downloads and total_attempts < len(papers):
+        paper = papers[total_attempts % len(papers)]  # Loop through papers
+        
         pdf_url = paper['pdf_url']
+        
+        # Skip known problematic domains
+        if any(domain in pdf_url.lower() for domain in skip_domains):
+            print(f"Skipping paper from a restricted domain: {paper['title']}")
+            total_attempts += 1
+            continue
+        
+        # Ensure the URL ends with '.pdf' for direct PDF links
+        if not pdf_url.lower().endswith('.pdf'):
+            print(f"Skipping paper with non-PDF link: {paper['title']}")
+            total_attempts += 1
+            continue
         
         # Clean the title to create a valid filename
         title_clean = re.sub(r'[^\w\s-]', '', paper['title'])
         title_clean = re.sub(r'\s+', ' ', title_clean).strip()
         
-        filename = f"{folder}/{i:02d} - {title_clean[:80]} [{paper['source']}].pdf"
-        print(f"Downloading from {paper['source']}: {paper['title']}")
+        filename = f"{folder}/{total_attempts+1:02d} - {title_clean[:80]} [{paper['source']}].pdf"
+        print(f"Attempting to download from {paper['source']}: {paper['title']}")
         
         try:
             response = requests.get(pdf_url, timeout=30)
             if response.status_code == 200 and response.headers.get('content-type', '').lower() == 'application/pdf':
                 with open(filename, 'wb') as f:
                     f.write(response.content)
-                print(f"✓ Saved to {filename}")
+                print(f"✓ Successfully saved to {filename}")
                 successful_downloads += 1
-                # Add delay to prevent overwhelming APIs
-                time.sleep(1)
             else:
                 print(f"✗ Failed to download: {pdf_url} (Status: {response.status_code}, Content-Type: {response.headers.get('content-type')})")
         except Exception as e:
             print(f"✗ Error downloading {pdf_url}: {e}")
+        
+        total_attempts += 1
+        # Add delay to prevent overwhelming APIs
+        time.sleep(1)
     
-    print(f"\nDownload summary: {successful_downloads} of {len(papers)} papers successfully downloaded")
+    print(f"\nDownload summary: {successful_downloads} of {target_successful_downloads} papers successfully downloaded")
+
+    # If you don't reach the desired number of successful downloads
+    if successful_downloads < target_successful_downloads:
+        print(f"Warning: Only {successful_downloads} papers were successfully downloaded.")
+
+# def download_pdfs(papers, folder='downloads', target_successful_downloads=15):
+#     if not papers:
+#         print("No papers to download")
+#         return
+        
+#     if not os.path.exists(folder):
+#         os.makedirs(folder)
+    
+#     successful_downloads = 0
+#     total_attempts = 0
+    
+#     while successful_downloads < target_successful_downloads and total_attempts < len(papers):
+#         paper = papers[total_attempts % len(papers)]  # Loop through papers
+        
+#         pdf_url = paper['pdf_url']
+        
+#         # Skip IEEE papers by checking if the URL contains "ieeexplore.ieee.org"
+#         if "ieeexplore.ieee.org" in pdf_url.lower():
+#             print(f"Skipping IEEE paper: {paper['title']}")
+#             total_attempts += 1
+#             continue
+        
+#         # Clean the title to create a valid filename
+#         title_clean = re.sub(r'[^\w\s-]', '', paper['title'])
+#         title_clean = re.sub(r'\s+', ' ', title_clean).strip()
+        
+#         filename = f"{folder}/{total_attempts+1:02d} - {title_clean[:80]} [{paper['source']}].pdf"
+#         print(f"Attempting to download from {paper['source']}: {paper['title']}")
+        
+#         try:
+#             response = requests.get(pdf_url, timeout=30)
+#             if response.status_code == 200 and response.headers.get('content-type', '').lower() == 'application/pdf':
+#                 with open(filename, 'wb') as f:
+#                     f.write(response.content)
+#                 print(f"✓ Successfully saved to {filename}")
+#                 successful_downloads += 1
+#             else:
+#                 print(f"✗ Failed to download: {pdf_url} (Status: {response.status_code}, Content-Type: {response.headers.get('content-type')})")
+#         except Exception as e:
+#             print(f"✗ Error downloading {pdf_url}: {e}")
+        
+#         total_attempts += 1
+#         # Add delay to prevent overwhelming APIs
+#         time.sleep(1)
+    
+#     print(f"\nDownload summary: {successful_downloads} of {target_successful_downloads} papers successfully downloaded")
+
+#     # If you don't reach the desired number of successful downloads
+#     if successful_downloads < target_successful_downloads:
+#         print(f"Warning: Only {successful_downloads} papers were successfully downloaded.")
+
 
 # ==== API KEY MANAGEMENT ====
 def get_api_keys():
@@ -271,8 +339,6 @@ def get_api_keys():
     
     core_api_key = "qXc7eCZiTfnFuzvsPWoEVjOY1R8G4xa0"  # Default key
     
-    
-        
     serp_api_key = "25d181450dab71e98838d2c2f6fe93324cb012494e0d77978b3c9eeb8f43bc85"  # Default key
     
     return core_api_key, serp_api_key
@@ -281,16 +347,16 @@ def get_api_keys():
 def main():
     print("=== Research Paper Downloader ===")
     
-    sym_spell = init_spell_checker()
     raw_topic = input("Enter your project goal or topic: ")
-    topic = correct_query(sym_spell, raw_topic)
-    print(f"Searching for corrected query: {topic}")
+    topic = raw_topic
+    print(f"Searching for query: {topic}")
     
     core_api_key, serp_api_key = get_api_keys()
     
     # Ask for max results
     try:
-        max_results_per_source = int(input("Enter maximum results per source (default: 5): ") or "5")
+        # max_results_per_source = int(input("Enter maximum results per source (default: 5): ") or "5")
+        max_results_per_source = 15
     except ValueError:
         max_results_per_source = 5
         print("Invalid input, using default: 5")
@@ -325,7 +391,8 @@ def main():
     
     # Ask how many papers to download
     try:
-        top_k = int(input(f"\nHow many top papers to download? (default: 10, max: {len(unique_papers)}): ") or "10")
+        # top_k = int(input(f"\nHow many top papers to download? (default: 10, max: {len(unique_papers)}): ") or "10")
+        top_k = 15
         top_k = min(top_k, len(unique_papers))
     except ValueError:
         top_k = min(10, len(unique_papers))
@@ -338,14 +405,10 @@ def main():
     # Ask for download folder
     download_folder = "downloads"
     
-    print(f"\nDownloading {len(ranked_papers)} papers to '{download_folder}'...")
+    print(f"\nDownloading {len(ranked_papers)} papers...")
     download_pdfs(ranked_papers, folder=download_folder)
-    print("\nDone!")
+    
+    print("\n=== All done! ===")
 
 if __name__ == "__main__":
-    try:
-        main()
-    except KeyboardInterrupt:
-        print("\nOperation cancelled by user")
-    except Exception as e:
-        print(f"\nAn unexpected error occurred: {e}")
+    main()
