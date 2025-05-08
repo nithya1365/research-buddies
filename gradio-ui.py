@@ -37,12 +37,21 @@ else:
 # Initialize Groq client
 client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
-# Query function
-def ask_question(query):
+# Chat function that restricts answers to document content only
+def chat_fn(history, query):
     relevant_docs = db.similarity_search(query, k=3)
+
+    if not relevant_docs:
+        answer = "❌ Answer not found in the document."
+        history.append((query, answer))
+        return history, ""
+
     context = "\n\n".join([doc.page_content for doc in relevant_docs])
 
-    prompt = f"""Context:
+    prompt = f"""You are a research assistant. Use ONLY the information in the context below to answer the question.
+If the answer is not found in the context, say "❌ Answer not found in the document."
+
+Context:
 {context}
 
 Question: {query}
@@ -55,27 +64,39 @@ Answer:"""
             {"role": "user", "content": prompt}
         ],
         max_tokens=500,
-        temperature=0.7
+        temperature=0.0
     )
 
-    return response.choices[0].message.content
+    answer = response.choices[0].message.content.strip()
 
+    history.append((query, answer))
+    return history, ""
+
+# Get all PDF files in books folder
 books_dir = os.path.join(current_dir, "books")
 pdf_files = [
     os.path.join(books_dir, f)
     for f in os.listdir(books_dir)
     if f.lower().endswith(".pdf")
 ]
-downloadables = [gr.File(value=pdf, label=os.path.basename(pdf)) for pdf in pdf_files]
-# Gradio Interface
-iface = gr.Interface(
-    fn=ask_question,
-    inputs=gr.Textbox(lines=2, placeholder="Ask something about the BCI.pdf..."),
-    outputs=["text"] + downloadables,
-    title="Research Buddies",
-    description="Ask a question related to your field of research (Data Science)."
-)
 
+# Gradio Interface
+with gr.Blocks() as demo:
+    gr.Markdown("# 📘 BCI Document Chatbot")
+    gr.Markdown("Ask questions based strictly on the BCI document using Groq + LangChain.")
+
+    chatbot = gr.Chatbot()
+    msg = gr.Textbox(label="Your question")
+    clear = gr.Button("Clear")
+
+    state = gr.State([])
+
+    msg.submit(chat_fn, [state, msg], [chatbot, msg])
+    clear.click(lambda: ([], ""), None, [chatbot, msg, state])
+
+    gr.Markdown("### 📂 Download Available Books")
+    for pdf in pdf_files:
+        gr.File(value=pdf, label=os.path.basename(pdf))
 
 if __name__ == "__main__":
-    iface.launch()
+    demo.launch()
