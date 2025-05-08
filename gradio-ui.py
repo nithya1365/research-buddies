@@ -60,14 +60,22 @@ Answer:"""
 
     return response.choices[0].message.content
 
+books_dir = os.path.join(current_dir, "books")
+pdf_files = [
+    os.path.join(books_dir, f)
+    for f in os.listdir(books_dir)
+    if f.lower().endswith(".pdf")
+]
+downloadables = [gr.File(value=pdf, label=os.path.basename(pdf)) for pdf in pdf_files]
 # Gradio Interface
 iface = gr.Interface(
     fn=ask_question,
-    inputs=gr.Textbox(lines=2, placeholder="Ask something about the BCI.txt..."),
-    outputs="text",
-    title="BCI Book QA",
-    description="Ask a question related to the BCI document using Groq + LangChain."
+    inputs=gr.Textbox(lines=2, placeholder="Ask something about the BCI.pdf..."),
+    outputs=["text"] + downloadables,
+    title="Research Buddies",
+    description="Ask a question related to your field of research (Data Science)."
 )
+
 
 if __name__ == "__main__":
     iface.launch()
