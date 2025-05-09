@@ -8,47 +8,62 @@ from langchain_community.vectorstores import Chroma
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from groq import Groq
 
-# Load environment variables
+# Load .env for API keys
 load_dotenv()
 
-# Define paths
+# Define base paths
 current_dir = os.path.dirname(os.path.abspath(__file__))
-file_path = os.path.join(current_dir, "books", "BCI.pdf")
-persistent_directory = os.path.join(current_dir, "db", "chroma_db")
+downloads_dir = os.path.join(current_dir, "downloads")
+persistent_directory = os.path.join(current_dir, "db1", "chroma_db1")
 
-# Load or initialize vector store
-if not os.path.exists(persistent_directory):
-    print("Persistent directory does not exist. Initializing vector store...")
+# Initialize embedding model
+embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
 
-    if not os.path.exists(file_path):
-        raise FileNotFoundError(f"The file {file_path} does not exist.")
+# Initialize or load vectorstore
+if not os.path.exists(persistent_directory) or not os.listdir(persistent_directory):
+    print("⏳ Creating new vectorstore...")
+    all_docs = []
+    
+    for file in os.listdir(downloads_dir):
+        if file.endswith(".pdf"):
+            path = os.path.join(downloads_dir, file)
+            loader = PyPDFLoader(path)
+            documents = loader.load()
+            text_splitter = CharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
+            split_docs = text_splitter.split_documents(documents)
+            all_docs.extend(split_docs)
+            print(f"✅ Loaded {file}")
 
-    loader = PyPDFLoader(file_path)
-    documents = loader.load()
-    text_splitter = CharacterTextSplitter(chunk_size=1000, chunk_overlap=0)
-    docs = text_splitter.split_documents(documents)
+    if not all_docs:
+        raise ValueError("No PDF files found in the downloads directory.")
 
-    embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
-    db = Chroma.from_documents(docs, embeddings, persist_directory=persistent_directory)
+    db = Chroma.from_documents(all_docs, embeddings, persist_directory=persistent_directory)
+    print("✅ Vectorstore created.")
 else:
-    embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
+    print("📂 Loading existing vectorstore...")
     db = Chroma(persist_directory=persistent_directory, embedding_function=embeddings)
+    
 
 # Initialize Groq client
 client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
-# Chat function that restricts answers to document content only
-def chat_fn(history, query):
-    relevant_docs = db.similarity_search(query, k=3)
+# Query function
+def ask_question(query):
+    results = db.similarity_search(query, k=3)
+    if not results:
+        return "❌ No relevant documents found."
 
-    if not relevant_docs:
-        answer = "❌ Answer not found in the document."
-        history.append((query, answer))
-        return history, ""
+    # Build context with source info
+    context_parts = []
+    sources = set()
+    for doc in results:
+        source = os.path.basename(doc.metadata.get("source", "Unknown PDF"))
+        sources.add(source)
+        context_parts.append(f"[{source}]\n{doc.page_content}")
 
-    context = "\n\n".join([doc.page_content for doc in relevant_docs])
-
-    prompt = f"""You are a research assistant. Use ONLY the information in the context below to answer the question.
+    context = "\n\n".join(context_parts)
+    prompt = f"""
+You are a helpful assistant. Use ONLY the information in the following context to answer the question.
 If the answer is not found in the context, say "❌ Answer not found in the document."
 
 Context:
@@ -56,45 +71,54 @@ Context:
 
 Question: {query}
 
-Answer:"""
+Answer:
+"""
 
     response = client.chat.completions.create(
         model="mistral-saba-24b",
-        messages=[
-            {"role": "user", "content": prompt}
-        ],
+        messages=[{"role": "user", "content": prompt}],
         max_tokens=500,
         temperature=0.0
     )
 
     answer = response.choices[0].message.content.strip()
 
-    history.append((query, answer))
-    return history, ""
+    if "❌ Answer not found" in answer:
+        return answer
+    else:
+        source_list = ", ".join(sorted(sources))
+        return f"{answer}\n\n📄 *Source(s)*: {source_list}"
 
-# Get all PDF files in books folder
-books_dir = os.path.join(current_dir, "books")
+# List available PDF files
 pdf_files = [
-    os.path.join(books_dir, f)
-    for f in os.listdir(books_dir)
+    os.path.join(downloads_dir, f)
+    for f in os.listdir(downloads_dir)
     if f.lower().endswith(".pdf")
 ]
 
-# Gradio Interface
+# Gradio UI with Chat History
 with gr.Blocks() as demo:
-    gr.Markdown("# 📘 BCI Document Chatbot")
-    gr.Markdown("Ask questions based strictly on the BCI document using Groq + LangChain.")
+    gr.Markdown("# 📘 Multi-PDF Chatbot")
+    gr.Markdown("Ask questions from the PDFs in the ⁠ downloads ⁠ folder.")
 
-    chatbot = gr.Chatbot()
-    msg = gr.Textbox(label="Your question")
-    clear = gr.Button("Clear")
+    chatbot = gr.Chatbot(label="Chat History")
+    query_input = gr.Textbox(lines=2, placeholder="Ask something from the documents...")
+    ask_button = gr.Button("Ask")
+    history_state = gr.State([])  # To store chat history
 
-    state = gr.State([])
+    def chat_with_memory(query, history):
+        answer = ask_question(query)
+        history.append((query, answer))
+        return history, history, ""
 
-    msg.submit(chat_fn, [state, msg], [chatbot, msg])
-    clear.click(lambda: ([], ""), None, [chatbot, msg, state])
+    ask_button.click(
+        fn=chat_with_memory,
+        inputs=[query_input, history_state],
+        outputs=[chatbot, history_state, query_input]
+    )
 
-    gr.Markdown("### 📂 Download Available Books")
+
+    gr.Markdown("### 📂 Available PDFs:")
     for pdf in pdf_files:
         gr.File(value=pdf, label=os.path.basename(pdf))
 
