@@ -18,7 +18,7 @@ load_dotenv()
 db = None
 
 def get_api_keys():
-    return "qXc7eCZiTfnFuzvsPWoEVjOY1R8G4xa0", "25d181450dab71e98838d2c2f6fe93324cb012494e0d77978b3c9eeb8f43bc85"
+    return "",""    # enter your api key for CORE AND SERP
 
 def search_arxiv(query, max_results=10):
     papers = []
