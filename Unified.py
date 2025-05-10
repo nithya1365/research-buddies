@@ -325,7 +325,7 @@ with gr.Blocks(title="📚 Unified Research Assistant") as demo:
             refresh_button = gr.Button("🔄 Refresh PDF List")
             pdf_output = gr.Column()
             refresh_button.click(fn=refresh_pdfs, outputs=pdf_output)
-        demo.load(fn=refresh_pdfs, outputs=pdf_output)
+            demo.load(fn=refresh_pdfs, outputs=pdf_output)
 
 
 if __name__ == "__main__":
