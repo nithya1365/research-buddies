@@ -280,8 +280,8 @@ def download_pdfs(papers, folder='downloads', target_successful_downloads=15):
 # ==== API KEY MANAGEMENT ====
 def get_api_keys():
     # Using hardcoded API keys as in the original code
-    core_api_key = "qXc7eCZiTfnFuzvsPWoEVjOY1R8G4xa0"  # Default key
-    serp_api_key = "25d181450dab71e98838d2c2f6fe93324cb012494e0d77978b3c9eeb8f43bc85"  # Default key
+    core_api_key = CORE_API_KEY  # Default key
+    serp_api_key = SERP_API_KEY# Default key
     
     return core_api_key, serp_api_key
 
