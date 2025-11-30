@@ -1,95 +1,99 @@
-🚀 Research-Buddies
-Automated Research Paper Finder + RAG QA
+# Research-Buddies
+**Automated Research Paper Finder + RAG QA**
 
-An end-to-end academic research assistant that automates literature review, research paper retrieval, and RAG-based question answering using modern LLMs.
+Research-Buddies is a Python tool that serves as a complete academic research assistant, automating literature review, paper retrieval, and RAG-based question answering using modern LLMs.
 
-📌 Overview
+---
 
-Research-Buddies helps students, researchers, and engineers by automating:
+##  Overview
 
-🔍 Research paper discovery
+Research-Buddies helps students, researchers, and engineers by streamlining:
 
-📥 Automatic open-access PDF download
+-  **Research paper discovery** from multiple sources  
+-  **Automatic download** of open-access PDFs  
+-  **PDF → text conversion** for processing  
+-  **Vector database creation** for semantic search  
+-  **RAG-based question answering** using Groq LLMs  
+-  **Simple and fast UI** via Gradio  
 
-📄 PDF → text conversion
+It reduces manual effort and significantly speeds up the research workflow.
 
-🧠 Vector database creation
+---
 
-🔍 RAG-based question answering using Groq LLMs
+##  Features
 
-🎨 Simple and fast UI via Gradio
+###  1. Multi-Source Research Paper Search
 
-It significantly improves research efficiency and reduces time spent manually searching papers.
+Fetches papers from multiple APIs:
 
-✨ Features
-🔍 1. Multi-Source Research Paper Search
+| Source | Method |
+|--------|--------|
+| arXiv | REST API |
+| Semantic Scholar | Graph API |
+| CORE | API (key required) |
+| Google Scholar | SerpAPI |
 
-Fetches papers from:
+---
 
-Source	Method
-arXiv	REST API
-Semantic Scholar	Graph API
-CORE	API (key required)
-Google Scholar	SerpAPI
-📈 2. Intelligent Relevance Ranking
+### 📈 2. Intelligent Relevance Ranking
 
 Papers are ranked using:
 
-Query-term frequency
+- Query-term frequency  
+- Weighted title and abstract matches  
+- Fuzzy similarity using `SequenceMatcher`  
 
-Weighted title & abstract matching
+---
 
-Fuzzy similarity (SequenceMatcher)
+###  3. Smart PDF Downloader
 
-📥 3. Smart PDF Downloader
+Automatically avoids restricted or paid sources:
 
-Automatically avoids blocked or paid sources:
+ IEEE Xplore  
+ Springer  
+ Elsevier  
+ MDPI  
+ Nature  
+ ResearchGate  
 
-❌ IEEE Xplore
-❌ Springer
-❌ Elsevier
-❌ MDPI
-❌ Nature
-❌ ResearchGate
+Only direct **open-access PDFs** are downloaded.
 
-Only direct, open-access PDFs are downloaded.
+---
 
-📄 4. PDF → Text Processing
+###  4. PDF → Text Processing
 
-All PDFs are converted to .txt for:
+Downloaded PDFs are converted to `.txt` for:
 
-Embedding
+- Embedding  
+- Chunking  
+- RAG context preparation  
 
-Chunking
+---
 
-RAG context creation
+###  5. Vector Database (ChromaDB)
 
-🟦 5. Vector Database (ChromaDB)
+- Embeddings: `sentence-transformers/all-MiniLM-L6-v2`  
+- Persistent Chroma storage  
+- Fast cosine similarity-based retrieval  
 
-Embeddings: sentence-transformers/all-MiniLM-L6-v2
+---
 
-Persistent Chroma storage
+###  6. RAG QA with Groq LLMs
 
-Fast cosine similarity retrieval
+Uses **Mistral-Saba-24B** for accurate and fast responses:
 
-🧠 6. RAG QA with Groq LLMs
+- Answers generated strictly from retrieved documents  
+- Prevents hallucinations  
+- Uses a hybrid semantic + keyword retrieval pipeline  
 
-Uses Mistral-Saba-24B from Groq for fast and accurate answers.
+---
 
-Answers generated strictly from retrieved documents
+###  7. Gradio UI
 
-Prevents hallucinations
+Provides a **user-friendly interface** with:
 
-Uses hybrid retrieval pipeline (semantic + keyword search)
+- Search bar for queries  
+- Paper listing and previews  
+- RAG-based question answering  
 
-🎨 7. Gradio UI
-
-Provides:
-
-Search bar
-
-Paper listing
-
-RAG-based question answering
-
-Clean, simple, and accessible to beginners.
+Clean, simple, and beginner-friendly.
